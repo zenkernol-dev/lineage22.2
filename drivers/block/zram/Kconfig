@@ -45,3 +45,7 @@ config ZRAM_SIZE_OVERRIDE
 	range 1 8
 	default 4
 
+config ZRAM_DEFAULT_COMP_ALGORITHM
+	string "Default ZRAM algorithm"
+	default "lz4"
+
