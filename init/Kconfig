@@ -126,14 +126,13 @@ config POLLY_CLANG
 
 	  https://polly.llvm.org
 
-config LOCALVERSION_BRANCH_SHA
-	bool "Leave only branch name and current tree"
+config LOCALVERSION_SHA
+	bool "Leave only current tree"
 	default y
 	depends on LOCALVERSION_AUTO
 	depends on !COMPILE_TEST
 	help
-	  A cleaner version of LOCALVERSION_AUTO, contains branch name
-	  and current tree.
+	  A cleaner version of LOCALVERSION_AUTO, contains current tree.
 
 config HAVE_KERNEL_GZIP
 	bool
