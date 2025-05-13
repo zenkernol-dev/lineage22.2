@@ -14,11 +14,6 @@
 
 
 #define pr_fmt(fmt)	"dsi-drm:[%s] " fmt, __func__
-
-#ifndef CONFIG_MACH_XIAOMI_PHOENIX
-#include <linux/msm_drm_notify.h>
-#endif
-
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_bridge.h>
@@ -27,7 +22,6 @@
 #include "msm_kms.h"
 #include "sde_connector.h"
 #include "dsi_drm.h"
-#include "dsi_panel.h"
 #include "sde_trace.h"
 #include "sde_encoder.h"
 
@@ -187,11 +181,6 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 	int rc = 0;
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 
-#ifndef CONFIG_MACH_XIAOMI_PHOENIX
-	struct msm_drm_notifier notify_data;
-	int power_mode;
-#endif
-
 	if (!bridge) {
 		pr_err("Invalid params\n");
 		return;
@@ -204,12 +193,11 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 
 	atomic_set(&c_bridge->display->panel->esd_recovery_pending, 0);
 
-#ifndef CONFIG_MACH_XIAOMI_PHOENIX
-	power_mode = sde_connector_get_lp(c_bridge->display->drm_conn);
-	notify_data.data = &power_mode;
-	notify_data.id = MSM_DRM_PRIMARY_DISPLAY;
-	msm_drm_notifier_call_chain(MSM_DRM_EARLY_EVENT_BLANK, &notify_data);
-#endif
+	if (c_bridge->display->is_prim_display && atomic_read(&prim_panel_is_on)) {
+		cancel_delayed_work_sync(&prim_panel_work);
+		__pm_relax(&prim_panel_wakelock);
+		return;
+	}
 
 	/* By this point mode should have been validated through mode_fixup */
 	rc = dsi_display_set_mode(c_bridge->display,
@@ -217,12 +205,6 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 	if (rc) {
 		pr_err("[%d] failed to perform a mode set, rc=%d\n",
 		       c_bridge->id, rc);
-		return;
-	}
-
-	if (c_bridge->display->is_prim_display && atomic_read(&prim_panel_is_on)) {
-		cancel_delayed_work_sync(&prim_panel_work);
-		__pm_relax(&prim_panel_wakelock);
 		return;
 	}
 
@@ -252,9 +234,6 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 	}
 	SDE_ATRACE_END("dsi_display_enable");
 
-#ifndef CONFIG_MACH_XIAOMI_PHOENIX
-	msm_drm_notifier_call_chain(MSM_DRM_EVENT_BLANK, &notify_data);
-#endif
 	rc = dsi_display_splash_res_cleanup(c_bridge->display);
 	if (rc)
 		pr_err("Continuous splash pipeline cleanup failed, rc=%d\n",
@@ -305,22 +284,6 @@ int dsi_bridge_interface_enable(int timeout)
 	return ret;
 }
 EXPORT_SYMBOL(dsi_bridge_interface_enable);
-
-static int dsi_bridge_get_panel_info(struct drm_bridge *bridge, char *buf)
-{
-	int rc = 0;
-	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
-
-	if (!c_bridge) {
-		pr_err("Invalid params\n");
-		return rc;
-	}
-
-	if (c_bridge->display->name)
-		return snprintf(buf, PAGE_SIZE, c_bridge->display->name);
-
-	return rc;
-}
 
 static void dsi_bridge_enable(struct drm_bridge *bridge)
 {
@@ -388,21 +351,11 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 	int rc = 0;
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 
-#ifndef CONFIG_MACH_XIAOMI_PHOENIX
-	struct msm_drm_notifier notify_data;
-	int power_mode;
-#endif
 	if (!bridge) {
 		pr_err("Invalid params\n");
 		return;
 	}
 
-#ifndef CONFIG_MACH_XIAOMI_PHOENIX
-	power_mode = sde_connector_get_lp(c_bridge->display->drm_conn);
-	notify_data.data = &power_mode;
-	notify_data.id = MSM_DRM_PRIMARY_DISPLAY;
-	msm_drm_notifier_call_chain(MSM_DRM_EARLY_EVENT_BLANK, &notify_data);
-#endif
 	SDE_ATRACE_BEGIN("dsi_bridge_post_disable");
 	SDE_ATRACE_BEGIN("dsi_display_disable");
 	rc = dsi_display_disable(c_bridge->display);
@@ -425,10 +378,6 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 
 	if (c_bridge->display->is_prim_display)
 		atomic_set(&prim_panel_is_on, false);
-
-#ifndef CONFIG_MACH_XIAOMI_PHOENIX
-	msm_drm_notifier_call_chain(MSM_DRM_EVENT_BLANK, &notify_data);
-#endif
 }
 
 static void prim_panel_off_delayed_work(struct work_struct *work)
@@ -669,7 +618,6 @@ static const struct drm_bridge_funcs dsi_bridge_ops = {
 	.disable      = dsi_bridge_disable,
 	.post_disable = dsi_bridge_post_disable,
 	.mode_set     = dsi_bridge_mode_set,
-	.disp_get_panel_info = dsi_bridge_get_panel_info,
 };
 
 int dsi_conn_set_info_blob(struct drm_connector *connector,
@@ -1136,10 +1084,6 @@ int dsi_conn_post_kickoff(struct drm_connector *connector,
 				return -EINVAL;
 			}
 		}
-#ifdef CONFIG_MACH_XIAOMI_SWEET
-		if (adj_mode.timing.refresh_rate == 120)
-			dsi_panel_gamma_mode_change(display->panel, &adj_mode);
-#endif
 
 		c_bridge->dsi_mode.dsi_mode_flags &= ~DSI_MODE_FLAG_VRR;
 	}
