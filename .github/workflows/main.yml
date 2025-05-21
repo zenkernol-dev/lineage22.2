@@ -1,4 +1,4 @@
-name: build_miui 
+name: build
 on:
   workflow_dispatch:
 jobs:
@@ -20,31 +20,26 @@ jobs:
             sudo apt install bc cpio flex bison aptitude git python-is-python3 tar perl wget curl lz4 -y
             sudo aptitude install libssl-dev -y
         
-    - name: Fetch Toolchains & Gcc
+    - name: Fetch Toolchains 
       run: |
             mkdir clang && curl https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz -RLO && tar -C clang/ -xf clang-*.tar.gz
-            mkdir gcc64 
-            wget -O gcc-aarch64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz 
-            tar -C gcc64/ -zxvf gcc-aarch64.tar.gz
-            mkdir gcc32 
-            wget -O gcc-arm.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz 
-            tar -C gcc32/ -zxvf gcc-arm.tar.gz
-                  
-    - name: Build_Kernel
+            git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
+            git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
+                       
+    - name: Build
       run: |
+           export ARCH=arm64
            export PATH="${PWD}/clang/bin:${PWD}gcc64/bin:${PWD}gcc32/bin:${PATH}"
            export KBUILD_BUILD_USER=build-user
            export KBUILD_BUILD_HOST=build-host
-           export KBUILD_COMPILER_STRING="${PWD}/clang"
-           export ARCH=arm64
+           export KBUILD_COMPILER_STRING="${PWD}/clang" 
            export LLVM=1 
            export LLVM_IAS=1
-           export CC=clang
            export CLANG_TRIPLE=aarch64-linux-gnu-
            export CROSS_COMPILE=aarch64-linux-android-
-           export CROSS_COMPILE_ARM32=arm-linux-androideabi-             
+           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
            make O=out sweet_user_defconfig
-           make -j$(nproc --all) O=out                    
+           make -j$(nproc --all) O=out CC=clang               
            mv out/.config out/sweet_user_defconfig.txt
            
     - name: Upload defconfig 
@@ -55,17 +50,13 @@ jobs:
 
     - name: Fetch Anykernel3
       run: |
-            git clone --depth=1 https://github.com/kanger-303/AnyKernel3 -b perf AnyKernel3 
+            git clone --depth=1 https://github.com/kanger-303/AnyKernel3 -b zenkernol AnyKernel3 
             cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
             cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
             cp out/arch/arm64/boot/dtb.img AnyKernel3/dtb.img
                     
-    - name: Upload Kernel
+    - name: Upload ZIP
       uses: actions/upload-artifact@v4
       with:
-        name: AGNI-Kernel-${{ env.BUILD_TIME }}
+        name: ZenKernol-MIUI-${{ env.BUILD_TIME }}
         path: AnyKernel3/*
-
-
-
-
